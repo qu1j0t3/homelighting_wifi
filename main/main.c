@@ -30,6 +30,8 @@
 
 static const char *TAG = "example";
 
+#define LED_PWM_FREQ 1000
+
 // Base un-dimmed colour, and dimmer level (all 0..255)
 unsigned col_r, col_g, col_b, col_w, level;
 
@@ -80,10 +82,10 @@ ledc_channel_config_t led_chan_w = {
 void set_level(unsigned new_level) {
       level = new_level;
 
-      led_chan_r.duty = (col_r*255)/level;
-      led_chan_g.duty = (col_g*255)/level;
-      led_chan_b.duty = (col_b*255)/level;
-      led_chan_w.duty = (col_w*255)/level;
+      led_chan_r.duty = (col_r*level)/255;
+      led_chan_g.duty = (col_g*level)/255;
+      led_chan_b.duty = (col_b*level)/255;
+      led_chan_w.duty = (col_w*level)/255;
 
       ledc_channel_config(&led_chan_g);
       ledc_channel_config(&led_chan_r);
@@ -95,16 +97,20 @@ void set_level(unsigned new_level) {
 static esp_err_t read_get_handler(httpd_req_t *req)
 {
     size_t buf_len;
-    char* resp_str = malloc(100);
+    char* resp_str = malloc(200);
 
-    buf_len = sprintf(resp_str, "{\"r\":%d,\"g\":%d,\"b\":%d,\"w\":%d,\"level\":%d}", col_r, col_g, col_b, col_w, level);
-
+    buf_len = sprintf(resp_str,
+      "{\"r\":%d,\"g\":%d,\"b\":%d,\"w\":%d,"
+      "\"level\":%d,"
+      "\"dutyr\":%lu,\"dutyg\":%lu,\"dutyb\":%lu,\"dutyw\":%lu,"
+      "\"freq\":%d}",
+      col_r, col_g, col_b, col_w,
+      level,
+      led_chan_r.duty, led_chan_g.duty, led_chan_b.duty, led_chan_w.duty,
+      LED_PWM_FREQ);
     httpd_resp_set_hdr(req, "Content-Type", "application/json");
-
     httpd_resp_send(req, resp_str, buf_len);
-
     free(resp_str);
-
     return ESP_OK;
 }
 
@@ -113,29 +119,10 @@ static esp_err_t index_get_handler(httpd_req_t *req)
     extern char *index_html;
 
     httpd_resp_set_hdr(req, "Content-Type", "text/html");
-
     httpd_resp_send(req, index_html, HTTPD_RESP_USE_STRLEN);
-
     return ESP_OK;
 }
 
-static const httpd_uri_t read_route = {
-    .uri       = "/read",
-    .method    = HTTP_GET,
-    .handler   = read_get_handler,
-    .user_ctx  = NULL
-};
-
-static const httpd_uri_t index_route = {
-    .uri       = "/",
-    .method    = HTTP_GET,
-    .handler   = index_get_handler,
-    .user_ctx  = NULL
-};
-
-/* An HTTP PUT handler. This demonstrates realtime
- * registration and deregistration of URI handlers
- */
 static esp_err_t ctrl_put_handler(httpd_req_t *req)
 {
     char buf[32];
@@ -156,7 +143,7 @@ static esp_err_t ctrl_put_handler(httpd_req_t *req)
       col_b = b;
       col_w = w;
 
-      set_level(255);
+      set_level(level);
 
       ESP_LOGI(TAG, "Set: r=%d g=%d b=%d w=%d\n", r, g, b, w);
 
@@ -190,7 +177,7 @@ static esp_err_t level_put_handler(httpd_req_t *req)
 
       httpd_resp_send(req, "OK\r\n", HTTPD_RESP_USE_STRLEN);
     } else {
-      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "400 Expected format: W<r>,<g>,<b>,<w>");
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "400 Expected format: L<level 0..255>");
     }
 
     /* Respond with empty body */
@@ -208,6 +195,20 @@ static const httpd_uri_t level_route = {
     .uri       = "/level",
     .method    = HTTP_PUT,
     .handler   = level_put_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t read_route = {
+    .uri       = "/read",
+    .method    = HTTP_GET,
+    .handler   = read_get_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t index_route = {
+    .uri       = "/",
+    .method    = HTTP_GET,
+    .handler   = index_get_handler,
     .user_ctx  = NULL
 };
 
@@ -327,7 +328,7 @@ void app_main(void)
       .speed_mode = LEDC_LOW_SPEED_MODE,                /*!< LEDC speed speed_mode, high-speed mode or low-speed mode */
       .duty_resolution = LEDC_TIMER_8_BIT,      /*!< LEDC channel duty resolution */
       .timer_num = LEDC_TIMER_0,               /*!< The timer source of channel (0 - 3) */
-      .freq_hz = 1000,                      /*!< LEDC timer frequency (Hz) */
+      .freq_hz = LED_PWM_FREQ,                      /*!< LEDC timer frequency (Hz) */
       .clk_cfg = LEDC_USE_RTC8M_CLK
     };
 

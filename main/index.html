@@ -13,7 +13,6 @@
     }
     section {
       width: 33%;
-      height: 100vh;
       border-radius: 8px;
       border: solid 2px;
       text-align: center;
@@ -21,6 +20,12 @@
       flex-direction: column;
       justify-content: space-between;
       margin: 4vh auto;
+    }
+    #levels {
+      height: 90vh;
+    }
+    section.disable {
+      background-color: #ddd;
     }
     section div + div {
       border-top: solid 1px #ccc;
@@ -33,24 +38,40 @@
 </head>
 <body>
   <main>
-    <section>
+    <section id="levels">
     </section>
+    <!--
+    <section>
+      <div>
+        Orange
+      </div>
+    </section>
+    -->
   </main>
 
   <script>
+    var sectionEl = document.getElementById('levels');
+    var disable = false;
+
     function clickHandler() {
-      var level = this.textContent;
-      fetch("level", {method: "POST", body: `L${level}`})
-        .then(resp => console.log(`response: ok: ${resp.ok} status: ${resp.status}`));
+      var level = Math.round(255*this.textContent/100);
+      if (!disable) {
+        disable = true;
+        sectionEl.setAttribute('class', 'disable');
+        fetch('level', {method: 'PUT', body: `L${level}`})
+          .then(resp => {
+            disable = false;
+            sectionEl.removeAttribute('class');
+          });
+      }
     }
 
-    var sectionEl = document.querySelector("section");
     for(var i = 100; i >= 0; i -= 5) {
-      var stepEl = document.createElement("div");
-      stepEl.addEventListener("click", clickHandler);
+      var stepEl = document.createElement('div');
+      stepEl.addEventListener('click', clickHandler);
       stepEl.textContent = i;
       if ((i % 10) == 0) {
-        stepEl.setAttribute("class", "dark");
+        stepEl.setAttribute('class', 'dark');
       }
       sectionEl.appendChild(stepEl);
     }
