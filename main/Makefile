@@ -2,5 +2,5 @@
 
 index.c : index.html
 	echo "char *index_html=\"\\" > $@
-	sed -e 's/"/\\"/g' -e 's/$$/\\/' $< >> $@
+	sed -e 's/"/\\"/g' -e 's/$$/\\n\\/' -e 's/^[ ]*//' $< >> $@
 	echo "\";" >> $@

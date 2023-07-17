@@ -24,8 +24,14 @@
     #levels {
       height: 90vh;
     }
+    section.div {
+      flex-grow: 1;
+    }
     section.disable {
-      background-color: #ddd;
+      background-color: #eee;
+    }
+    section div.active {
+      background-color: lightblue;
     }
     section div + div {
       border-top: solid 1px #ccc;
@@ -53,13 +59,23 @@
     var sectionEl = document.getElementById('levels');
     var disable = false;
 
+    function baseClass(i) {
+      return i % 10 ? '' : 'dark';
+    }
+
     function clickHandler() {
-      var level = Math.round(255*this.textContent/100);
+      var label = this.textContent;
+      var level = Math.round(255*label/100);
       if (!disable) {
         disable = true;
         sectionEl.setAttribute('class', 'disable');
         fetch('level', {method: 'PUT', body: `L${level}`})
           .then(resp => {
+            if (resp.ok) {
+              var oldLevel = document.querySelector('.active');
+              oldLevel && oldLevel.setAttribute('class', baseClass(oldLevel.textContent));
+              this.setAttribute('class', baseClass(label) + ' active');
+            }
             disable = false;
             sectionEl.removeAttribute('class');
           });
@@ -69,12 +85,22 @@
     for(var i = 100; i >= 0; i -= 5) {
       var stepEl = document.createElement('div');
       stepEl.addEventListener('click', clickHandler);
+      stepEl.setAttribute('id', `level-${i}`);
+      stepEl.setAttribute('class', baseClass(i));
       stepEl.textContent = i;
-      if ((i % 10) == 0) {
-        stepEl.setAttribute('class', 'dark');
-      }
       sectionEl.appendChild(stepEl);
     }
+
+    fetch('read')
+      .then(resp => resp.ok && resp.json())
+      .then(data => {
+        if (data) {
+          // find nearest level to the current level 0..255 as reported by device
+          var level = Math.round(20*data.level/255) * 5;
+          var el = document.getElementById(`level-${level}`);
+          el && el.setAttribute('class', baseClass(level) + ' active');
+        }
+      });
   </script>
 </body>
 </html>
