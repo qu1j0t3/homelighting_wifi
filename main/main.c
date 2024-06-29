@@ -19,7 +19,7 @@
 #include "protocol_examples_common.h"
 #include "esp_tls_crypto.h"
 #include <esp_http_server.h>
-
+#include <mdns.h>
 
 #include "driver/gpio.h"
 #include "driver/ledc.h"
@@ -28,7 +28,9 @@
  * handlers for the web server.
  */
 
-static const char *TAG = "example";
+static const char *TAG = "living";
+static const char *MY_MDNS_HOSTNAME = "living";
+static const char *MY_MDNS_INSTANCE_NAME = "living room lights";
 
 #define LED_PWM_FREQ 1000
 
@@ -78,6 +80,29 @@ ledc_channel_config_t led_chan_w = {
   .hpoint = 0,
   .flags = {.output_invert = 1}
 };
+
+#define SETTINGS_NAMESPACE "living"
+#define SETTINGS_LEVEL_KEY "l"
+#define SETTINGS_R_KEY "r"
+#define SETTINGS_G_KEY "g"
+#define SETTINGS_B_KEY "b"
+#define SETTINGS_W_KEY "w"
+
+void store_settings(unsigned l, unsigned r, unsigned g, unsigned b, unsigned w) {
+  nvs_handle_t settings_rw;
+
+  if (nvs_open(SETTINGS_NAMESPACE, NVS_READWRITE, &settings_rw) == ESP_OK) {
+    if (nvs_set_u8(settings_rw, SETTINGS_R_KEY, r) == ESP_OK &&
+        nvs_set_u8(settings_rw, SETTINGS_G_KEY, g) == ESP_OK &&
+        nvs_set_u8(settings_rw, SETTINGS_B_KEY, b) == ESP_OK &&
+        nvs_set_u8(settings_rw, SETTINGS_W_KEY, w) == ESP_OK &&
+        nvs_set_u8(settings_rw, SETTINGS_LEVEL_KEY, l) == ESP_OK)
+    {
+      nvs_commit(settings_rw);
+    }
+    nvs_close(settings_rw);
+  }
+}
 
 void set_level(unsigned new_level) {
       level = new_level;
@@ -137,6 +162,8 @@ static esp_err_t ctrl_put_handler(httpd_req_t *req)
     }
 
     if (sscanf(buf, "W%d,%d,%d,%d", &r, &g, &b, &w) == 4) {
+
+      store_settings(level, r, g, b, w);
 
       col_r = r;
       col_g = g;
@@ -268,7 +295,13 @@ void app_main(void)
 {
     static httpd_handle_t server = NULL;
 
-    ESP_ERROR_CHECK(nvs_flash_init());
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
@@ -329,7 +362,7 @@ void app_main(void)
       .duty_resolution = LEDC_TIMER_8_BIT,      /*!< LEDC channel duty resolution */
       .timer_num = LEDC_TIMER_0,               /*!< The timer source of channel (0 - 3) */
       .freq_hz = LED_PWM_FREQ,                      /*!< LEDC timer frequency (Hz) */
-      .clk_cfg = LEDC_USE_RTC8M_CLK
+      .clk_cfg = LEDC_USE_RC_FAST_CLK
     };
 
     ledc_timer_config(&led_timer);
@@ -340,6 +373,34 @@ void app_main(void)
     col_w = 240;
 
     set_level(255);
+
+    mdns_init();
+    mdns_hostname_set(MY_MDNS_HOSTNAME);
+    mdns_instance_name_set(MY_MDNS_INSTANCE_NAME);
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+
+    nvs_handle_t settings;
+    uint8_t stored_level, stored_r, stored_g, stored_b, stored_w;
+
+    if (nvs_open(SETTINGS_NAMESPACE, NVS_READONLY, &settings) == ESP_OK) {
+      if( nvs_get_u8(settings, SETTINGS_LEVEL_KEY, &stored_level) == ESP_OK &&
+          nvs_get_u8(settings, SETTINGS_R_KEY, &stored_r) == ESP_OK &&
+          nvs_get_u8(settings, SETTINGS_G_KEY, &stored_g) == ESP_OK &&
+          nvs_get_u8(settings, SETTINGS_B_KEY, &stored_b) == ESP_OK &&
+          nvs_get_u8(settings, SETTINGS_W_KEY, &stored_w) == ESP_OK )
+      {
+        ESP_LOGI(TAG, "Found settings: L=%d R=%d G=%d B=%d W=%d",
+          stored_level, stored_r, stored_g, stored_b, stored_w);
+
+        col_r = stored_r;
+        col_g = stored_g;
+        col_b = stored_b;
+        col_w = stored_w;
+
+        set_level(stored_level);
+      }
+      nvs_close(settings);
+    }
 
     server = start_webserver();
 }
