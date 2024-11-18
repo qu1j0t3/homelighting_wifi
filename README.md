@@ -14,6 +14,13 @@ The Example consists of HTTPD server demo with demostration of URI handling :
 * A development board with ESP32/ESP32-S2/ESP32-C3 SoC (e.g., ESP32-DevKitC, ESP-WROVER-KIT, etc.)
 * A USB cable for power supply and programming
 
+### Set up Espressif IDF
+
+If it has not been installed, follow instructions at
+https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/linux-macos-setup.html
+
+    % source ~/esp/esp-idf/export.sh
+
 ### Configure the project
 
 ```

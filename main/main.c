@@ -43,7 +43,7 @@ ledc_channel_config_t led_chan_g = {
   .channel = LEDC_CHANNEL_0,
   .intr_type = LEDC_INTR_DISABLE,
   .timer_sel = LEDC_TIMER_0,
-  .duty = 0x40,
+  .duty = 0,
   .hpoint = 0,
   .flags = {.output_invert = 1}
 };
@@ -54,7 +54,7 @@ ledc_channel_config_t led_chan_r = {
   .channel = LEDC_CHANNEL_1,
   .intr_type = LEDC_INTR_DISABLE,
   .timer_sel = LEDC_TIMER_0,
-  .duty = 0x40,
+  .duty = 0,
   .hpoint = 0,
   .flags = {.output_invert = 1}
 };
@@ -65,7 +65,7 @@ ledc_channel_config_t led_chan_b = {
   .channel = LEDC_CHANNEL_2,
   .intr_type = LEDC_INTR_DISABLE,
   .timer_sel = LEDC_TIMER_0,
-  .duty = 0x80,
+  .duty = 0,
   .hpoint = 0,
   .flags = {.output_invert = 1}
 };
@@ -76,7 +76,7 @@ ledc_channel_config_t led_chan_w = {
   .channel = LEDC_CHANNEL_3,
   .intr_type = LEDC_INTR_DISABLE,
   .timer_sel = LEDC_TIMER_0,
-  .duty = 0xff,
+  .duty = 0,
   .hpoint = 0,
   .flags = {.output_invert = 1}
 };
@@ -99,8 +99,13 @@ void store_settings(unsigned l, unsigned r, unsigned g, unsigned b, unsigned w) 
         nvs_set_u8(settings_rw, SETTINGS_LEVEL_KEY, l) == ESP_OK)
     {
       nvs_commit(settings_rw);
+        ESP_LOGI(TAG, "Stored settings :)");
+    } else {
+        ESP_LOGI(TAG, "Failed to store settings :(");
     }
     nvs_close(settings_rw);
+  } else {
+    ESP_LOGI(TAG, "Failed to open nvs namespace :(");
   }
 }
 
@@ -295,6 +300,60 @@ void app_main(void)
 {
     static httpd_handle_t server = NULL;
 
+
+    // living room strip = 6 metres
+    // current per 70" = 178 cm
+    // W   .650 A
+    // R   .643 A
+    // G   .675 A
+    // B   .619 A
+    // white + blue = 1.269 A ... 4.27 A per 6 m
+    // mix 1 W + 0.25 (R,G,B) ... 3.82 A per 6 m
+
+    gpio_config_t config = {
+      .pin_bit_mask = (1 << GPIO_NUM_16)
+                    | (1 << GPIO_NUM_17)
+                    | (1 << GPIO_NUM_18)
+                    | (1 << GPIO_NUM_19),
+      .intr_type = GPIO_INTR_DISABLE,
+      .mode = GPIO_MODE_DEF_OUTPUT,
+      .pull_down_en = GPIO_PULLDOWN_DISABLE,
+      .pull_up_en = GPIO_PULLUP_DISABLE
+    };
+
+    col_r = 255;
+    col_g = 255;
+    col_b = 255;
+    col_w = 240;
+
+    set_level(0); // do this before setting outputs to prevent a brief flash after power-on(?)
+
+    gpio_config(&config);
+
+/*
+// cycle colours test pattern
+    for (int i = 0; ; ++i) {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        int n = i % 4;
+        // levels are inverted: 0 = on, 1 = off
+        gpio_set_level(GPIO_NUM_16, n != 0); // g
+        gpio_set_level(GPIO_NUM_17, n != 1); // r
+        gpio_set_level(GPIO_NUM_18, n != 2); // b
+        gpio_set_level(GPIO_NUM_19, n != 3); // w
+    }
+*/
+
+    ledc_timer_config_t led_timer = {
+      .speed_mode = LEDC_LOW_SPEED_MODE,                /*!< LEDC speed speed_mode, high-speed mode or low-speed mode */
+      .duty_resolution = LEDC_TIMER_8_BIT,      /*!< LEDC channel duty resolution */
+      .timer_num = LEDC_TIMER_0,               /*!< The timer source of channel (0 - 3) */
+      .freq_hz = LED_PWM_FREQ,                      /*!< LEDC timer frequency (Hz) */
+      .clk_cfg = LEDC_USE_RC_FAST_CLK
+    };
+
+    ledc_timer_config(&led_timer);
+
+
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
       ESP_ERROR_CHECK(nvs_flash_erase());
@@ -325,55 +384,6 @@ void app_main(void)
 
 
 
-  // living room strip = 6 metres
-  // current per 70" = 178 cm
-  // W   .650 A
-  // R   .643 A
-  // G   .675 A
-  // B   .619 A
-  // white + blue = 1.269 A ... 4.27 A per 6 m
-  // mix 1 W + 0.25 (R,G,B) ... 3.82 A per 6 m
-
-    gpio_config_t config = {
-      .pin_bit_mask = (1 << GPIO_NUM_16) | (1 << GPIO_NUM_17) | (1 << GPIO_NUM_18) | (1 << GPIO_NUM_19),
-      .intr_type = GPIO_INTR_DISABLE,
-      .mode = GPIO_MODE_DEF_OUTPUT,
-      .pull_down_en = GPIO_PULLDOWN_DISABLE,
-      .pull_up_en = GPIO_PULLUP_DISABLE
-    };
-
-    gpio_config(&config);
-
-/*
-// cycle colours test pattern
-    for (int i = 0; ; ++i) {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        int n = i % 4;
-        // levels are inverted: 0 = on, 1 = off
-        gpio_set_level(GPIO_NUM_16, n != 0); // g
-        gpio_set_level(GPIO_NUM_17, n != 1); // r
-        gpio_set_level(GPIO_NUM_18, n != 2); // b
-        gpio_set_level(GPIO_NUM_19, n != 3); // w
-    }
-*/
-
-    ledc_timer_config_t led_timer = {
-      .speed_mode = LEDC_LOW_SPEED_MODE,                /*!< LEDC speed speed_mode, high-speed mode or low-speed mode */
-      .duty_resolution = LEDC_TIMER_8_BIT,      /*!< LEDC channel duty resolution */
-      .timer_num = LEDC_TIMER_0,               /*!< The timer source of channel (0 - 3) */
-      .freq_hz = LED_PWM_FREQ,                      /*!< LEDC timer frequency (Hz) */
-      .clk_cfg = LEDC_USE_RC_FAST_CLK
-    };
-
-    ledc_timer_config(&led_timer);
-
-    col_r = 255;
-    col_g = 255;
-    col_b = 255;
-    col_w = 240;
-
-    set_level(255);
-
     mdns_init();
     mdns_hostname_set(MY_MDNS_HOSTNAME);
     mdns_instance_name_set(MY_MDNS_INSTANCE_NAME);
@@ -398,8 +408,12 @@ void app_main(void)
         col_w = stored_w;
 
         set_level(stored_level);
+      } else {
+        ESP_LOGI(TAG, "Did not get settings :(");
       }
       nvs_close(settings);
+    } else {
+      ESP_LOGI(TAG, "Failed to open nvs namespace :(");
     }
 
     server = start_webserver();
